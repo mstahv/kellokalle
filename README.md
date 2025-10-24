@@ -146,4 +146,4 @@ public/
 
 ## Lisenssi
 
-MIT
+GPL
