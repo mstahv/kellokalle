@@ -2,11 +2,6 @@
 
 **Kellokalle** on **Kallen (Claude Code)** koodaama!!) suunnistuskilpailujen lähtökellosovellus, joka on toteutettu PWA-tekniikoilla. Sovellus näyttää seuraavat lähtijät, heidän kilpailutietonsa ja hoitaa lähtölaskennan äänimerkeillä ja nimien lukemisella.
 
-Jotta voisi toimia "tuotannossa", tarvitaan:
-
- * CSS tuunausta että kaikki viivalle tulijat mahtuu näytölle
- * Ehkä myös toinen näyttö tai konfigurointimahdollisuuksia jossa "kutsunnat" voi laittaa aiemmalle lähtöviivalle tms.
-
 ## Ominaisuudet
 
 - **IOF 3 XML tuki**: Lukee lähtölistat IOF 3 formaatin mukaisista XML-tiedostoista
