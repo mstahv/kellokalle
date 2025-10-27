@@ -5,6 +5,7 @@ export interface Competitor {
   controlCard: string; // Kilpailukortti (emit)
   startTime: Date;
   className: string;
+  startName: string; // Lähtöpaikka (esim. "Start 1")
 }
 
 export interface ClassStart {
@@ -17,6 +18,7 @@ export interface StartList {
   eventDate: Date;
   classes: ClassStart[];
   allCompetitors: Competitor[]; // Sorted by start time
+  startNames: string[]; // Kaikki lähtöpaikat (esim. ["Start 1", "Start 2"])
 }
 
 export interface Competition {
@@ -30,4 +32,5 @@ export interface AppConfig {
   selectedCompetition?: Competition;
   cachedStartList?: StartList;
   lastUpdated?: number;
+  selectedStartName?: string; // Valittu lähtöpaikka
 }

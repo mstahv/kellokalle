@@ -1,18 +1,38 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import type { StartList } from '../types';
 import { parseIOF3XML } from '../utils/xmlParser';
-import { saveStartList } from '../utils/storage';
+import { saveStartList, loadConfig } from '../utils/storage';
 import { virtualClock } from '../utils/virtualClock';
 
 interface ConfigViewProps {
   onStartListLoaded: (startList: StartList) => void;
+  startList?: StartList;
+  selectedStartName?: string;
+  onStartNameChange?: (startName: string) => void;
+  onClose?: () => void;
 }
 
-const ConfigView: React.FC<ConfigViewProps> = ({ onStartListLoaded }) => {
+const ConfigView: React.FC<ConfigViewProps> = ({
+  onStartListLoaded,
+  startList,
+  selectedStartName,
+  onStartNameChange,
+  onClose
+}) => {
   const [url, setUrl] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [simulationEnabled, setSimulationEnabled] = useState(true);
+  const [showStartNameDialog, setShowStartNameDialog] = useState(false);
+  const [loadedStartList, setLoadedStartList] = useState<StartList | null>(null);
+
+  // Lataa tallennettu URL kun komponentti mounttaa
+  useEffect(() => {
+    const config = loadConfig();
+    if (config?.startListUrl) {
+      setUrl(config.startListUrl);
+    }
+  }, []);
 
   const handleLoadStartList = async () => {
     if (!url.trim()) {
@@ -34,7 +54,14 @@ const ConfigView: React.FC<ConfigViewProps> = ({ onStartListLoaded }) => {
         virtualClock.disable();
       }
 
-      onStartListLoaded(startList);
+      // Jos lähtöpaikkoja on useampi kuin yksi, näytä valintadialogi
+      if (startList.startNames.length > 1) {
+        setLoadedStartList(startList);
+        setShowStartNameDialog(true);
+      } else {
+        // Muuten siirry suoraan lähtökellonäkymään
+        onStartListLoaded(startList);
+      }
     } catch (err) {
       setError(`Virhe ladattaessa lähtölistaa: ${err instanceof Error ? err.message : 'Tuntematon virhe'}`);
     } finally {
@@ -42,14 +69,84 @@ const ConfigView: React.FC<ConfigViewProps> = ({ onStartListLoaded }) => {
     }
   };
 
+  const handleStartNameSelected = (startName: string) => {
+    if (onStartNameChange) {
+      onStartNameChange(startName);
+    }
+    setShowStartNameDialog(false);
+    if (loadedStartList) {
+      onStartListLoaded(loadedStartList);
+    }
+  };
+
+  const handleSkipStartNameSelection = () => {
+    setShowStartNameDialog(false);
+    if (loadedStartList) {
+      onStartListLoaded(loadedStartList);
+    }
+  };
+
   const handleLoadExample = () => {
-    setUrl('https://online.tulospalvelu.fi/tulokset-new/xml/startlist_2025_smyo_1_iof.xml');
+    setUrl('https://online.tulospalvelu.fi/tulokset-new/xml/startlist_2025_viking_1_iof.xml');
   };
 
   return (
     <div style={styles.container}>
+      {showStartNameDialog && loadedStartList && (
+        <div style={styles.dialogOverlay}>
+          <div style={styles.dialogCard}>
+            <h2 style={styles.dialogTitle}>Valitse lähtöpaikka</h2>
+            <p style={styles.dialogText}>
+              Kilpailussa on useita lähtöpaikkoja. Valitse lähtöpaikka jonka lähtijät haluat näyttää:
+            </p>
+            <div style={styles.dialogButtons}>
+              <button
+                onClick={() => handleStartNameSelected('')}
+                style={styles.dialogButtonSecondary}
+              >
+                Kaikki lähdöt
+              </button>
+              {loadedStartList.startNames.map((name) => (
+                <button
+                  key={name}
+                  onClick={() => handleStartNameSelected(name)}
+                  style={styles.dialogButtonPrimary}
+                >
+                  {name}
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={handleSkipStartNameSelection}
+              style={styles.dialogButtonSkip}
+            >
+              Ohita valinta (käytä kaikki lähdöt)
+            </button>
+          </div>
+        </div>
+      )}
+
       <div style={styles.card}>
-        <h1 style={styles.title}>Kellokalle 🏃‍♂️⏱️</h1>
+        <div style={styles.header}>
+          <h1 style={styles.title}>Kellokalle 🏃‍♂️⏱️</h1>
+          {startList && onClose && (
+            <button onClick={onClose} style={styles.closeButton}>
+              ✕ Sulje
+            </button>
+          )}
+        </div>
+
+        {startList && (
+          <div style={styles.currentCompetition}>
+            <div style={styles.currentCompetitionTitle}>Ladattu kilpailu:</div>
+            <div style={styles.currentCompetitionName}>{startList.eventName}</div>
+            {url && (
+              <div style={styles.currentCompetitionUrl}>
+                {url.length > 60 ? `${url.substring(0, 60)}...` : url}
+              </div>
+            )}
+          </div>
+        )}
 
         <div style={styles.section}>
           <label style={styles.label}>
@@ -59,7 +156,7 @@ const ConfigView: React.FC<ConfigViewProps> = ({ onStartListLoaded }) => {
             type="text"
             value={url}
             onChange={(e) => setUrl(e.target.value)}
-            placeholder="https://online.tulospalvelu.fi/tulokset-new/xml/..."
+            placeholder="https://online.tulospalvelu.fi/tulokset-new/xml/startlist_2025_viking_1_iof.xml"
             style={styles.input}
             onKeyPress={(e) => e.key === 'Enter' && handleLoadStartList()}
           />
@@ -83,6 +180,29 @@ const ConfigView: React.FC<ConfigViewProps> = ({ onStartListLoaded }) => {
             </div>
           )}
         </div>
+
+        {startList && startList.startNames.length > 1 && (
+          <div style={styles.section}>
+            <label style={styles.label}>
+              Lähtöpaikka:
+            </label>
+            <select
+              value={selectedStartName || ''}
+              onChange={(e) => onStartNameChange?.(e.target.value)}
+              style={styles.select}
+            >
+              <option value="">Kaikki lähdöt</option>
+              {startList.startNames.map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+            </select>
+            <div style={styles.infoBox}>
+              ℹ️ Valitse lähtöpaikka näyttääksesi vain kyseisen lähdön lähtijät.
+            </div>
+          </div>
+        )}
 
         <div style={styles.buttonGroup}>
           <button
@@ -129,6 +249,7 @@ const styles: { [key: string]: React.CSSProperties } = {
     alignItems: 'center',
     padding: '20px',
     background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+    position: 'relative',
   },
   card: {
     backgroundColor: 'white',
@@ -138,12 +259,122 @@ const styles: { [key: string]: React.CSSProperties } = {
     width: '100%',
     boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
   },
+  header: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: '20px',
+  },
   title: {
     fontSize: '32px',
     fontWeight: 'bold',
-    marginBottom: '30px',
+    margin: 0,
     color: '#333',
-    textAlign: 'center',
+  },
+  closeButton: {
+    padding: '8px 16px',
+    fontSize: '18px',
+    fontWeight: 'bold',
+    color: '#667eea',
+    backgroundColor: 'white',
+    border: '2px solid #667eea',
+    borderRadius: '8px',
+    cursor: 'pointer',
+    transition: 'all 0.3s',
+  },
+  currentCompetition: {
+    backgroundColor: '#e3f2fd',
+    padding: '15px',
+    borderRadius: '8px',
+    marginBottom: '20px',
+  },
+  currentCompetitionTitle: {
+    fontSize: '12px',
+    color: '#1565c0',
+    fontWeight: '600',
+    marginBottom: '5px',
+    textTransform: 'uppercase',
+  },
+  currentCompetitionName: {
+    fontSize: '18px',
+    color: '#0d47a1',
+    fontWeight: 'bold',
+    marginBottom: '5px',
+  },
+  currentCompetitionUrl: {
+    fontSize: '12px',
+    color: '#1976d2',
+    wordBreak: 'break-all',
+  },
+  dialogOverlay: {
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1000,
+    padding: '20px',
+  },
+  dialogCard: {
+    backgroundColor: 'white',
+    borderRadius: '12px',
+    padding: '30px',
+    maxWidth: '500px',
+    width: '100%',
+    boxShadow: '0 20px 60px rgba(0,0,0,0.4)',
+  },
+  dialogTitle: {
+    fontSize: '24px',
+    fontWeight: 'bold',
+    marginBottom: '15px',
+    color: '#333',
+  },
+  dialogText: {
+    fontSize: '16px',
+    color: '#555',
+    marginBottom: '20px',
+    lineHeight: '1.5',
+  },
+  dialogButtons: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '10px',
+    marginBottom: '15px',
+  },
+  dialogButtonPrimary: {
+    padding: '14px 28px',
+    fontSize: '16px',
+    fontWeight: 'bold',
+    color: 'white',
+    backgroundColor: '#667eea',
+    border: 'none',
+    borderRadius: '8px',
+    cursor: 'pointer',
+    transition: 'background-color 0.3s',
+  },
+  dialogButtonSecondary: {
+    padding: '14px 28px',
+    fontSize: '16px',
+    fontWeight: 'bold',
+    color: '#667eea',
+    backgroundColor: 'white',
+    border: '2px solid #667eea',
+    borderRadius: '8px',
+    cursor: 'pointer',
+    transition: 'all 0.3s',
+  },
+  dialogButtonSkip: {
+    padding: '10px',
+    fontSize: '14px',
+    color: '#999',
+    backgroundColor: 'transparent',
+    border: 'none',
+    cursor: 'pointer',
+    textDecoration: 'underline',
   },
   section: {
     marginBottom: '20px',
@@ -162,6 +393,17 @@ const styles: { [key: string]: React.CSSProperties } = {
     border: '2px solid #ddd',
     borderRadius: '8px',
     boxSizing: 'border-box',
+    transition: 'border-color 0.3s',
+  },
+  select: {
+    width: '100%',
+    padding: '12px',
+    fontSize: '16px',
+    border: '2px solid #ddd',
+    borderRadius: '8px',
+    boxSizing: 'border-box',
+    backgroundColor: 'white',
+    cursor: 'pointer',
     transition: 'border-color 0.3s',
   },
   buttonGroup: {

@@ -4,7 +4,6 @@
 
 Jotta voisi toimia "tuotannossa", tarvitaan:
 
- * Lähdön valinta
  * CSS tuunausta että kaikki viivalle tulijat mahtuu näytölle
  * Ehkä myös toinen näyttö tai konfigurointimahdollisuuksia jossa "kutsunnat" voi laittaa aiemmalle lähtöviivalle tms.
 
@@ -13,6 +12,8 @@ Jotta voisi toimia "tuotannossa", tarvitaan:
 - **IOF 3 XML tuki**: Lukee lähtölistat IOF 3 formaatin mukaisista XML-tiedostoista
   - Kilpailunumero (BibNumber)
   - Kilpailukortti (ControlCard)
+  - Lähtöpaikka (StartName) - esim. "Start 1", "Start 2"
+- **Lähtöpaikan valinta**: Mahdollisuus valita tietty lähtöpaikka ja näyttää vain sen lähtijät
 - **Lähtölaskenta**: Automaattinen lähtölaskenta visuaalisella countdownilla
 - **Äänimerkit**: Viisi lyhyttä piippausta (sekunnin välein) + yksi pitkä piippaus lähdön hetkellä (Web Audio API)
   - Safari/iOS yhteensopivuus: Äänet aktivoidaan käyttäjän painamalla nappia
@@ -89,6 +90,7 @@ Testit kattavat:
    - Valitse haluatko käyttää simulaatiotilaa (oletuksena päällä)
    - Tai käytä esimerkkitiedostoa painamalla "Käytä esimerkkiä"
    - Lähtölista ladataan ja tallennetaan paikallisesti
+   - Jos kilpailussa on useita lähtöpaikkoja, valitse haluamasi lähtöpaikka pudotusvalikosta (oletuksena näytetään kaikki lähdöt)
 
 2. **Lähtökello**:
    - **Safari/iOS**: Aktivoi äänet klikkaamalla "🔊 Aktivoi äänet" -nappia ensimmäisellä kerralla

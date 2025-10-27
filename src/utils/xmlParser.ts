@@ -14,12 +14,21 @@ export async function parseIOF3XML(url: string): Promise<StartList> {
 
   const classesMap = new Map<string, Competitor[]>();
   const allCompetitors: Competitor[] = [];
+  const startNamesSet = new Set<string>();
 
   // Parse class starts
   const classStartElements = xmlDoc.querySelectorAll('ClassStart');
 
   classStartElements.forEach((classStartEl) => {
     const className = classStartEl.querySelector('Class > Name')?.textContent || 'Unknown';
+
+    // StartName on ClassStart-tason elementti, ei PersonStart-tasolla
+    const startName = classStartEl.querySelector('StartName')?.textContent || '';
+
+    // Add startName to set if it exists
+    if (startName) {
+      startNamesSet.add(startName);
+    }
 
     const personStarts = classStartEl.querySelectorAll('PersonStart');
 
@@ -45,6 +54,7 @@ export async function parseIOF3XML(url: string): Promise<StartList> {
         controlCard,
         startTime,
         className,
+        startName,
       };
 
       if (!classesMap.has(className)) {
@@ -68,5 +78,6 @@ export async function parseIOF3XML(url: string): Promise<StartList> {
     eventDate,
     classes,
     allCompetitors,
+    startNames: Array.from(startNamesSet).sort(),
   };
 }

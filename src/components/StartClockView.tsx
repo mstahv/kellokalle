@@ -7,9 +7,10 @@ import { virtualClock } from '../utils/virtualClock';
 interface StartClockViewProps {
   startList: StartList;
   onReset: () => void;
+  selectedStartName?: string;
 }
 
-const StartClockView: React.FC<StartClockViewProps> = ({ startList, onReset }) => {
+const StartClockView: React.FC<StartClockViewProps> = ({ startList, onReset, selectedStartName }) => {
   const [currentTime, setCurrentTime] = useState(virtualClock.getCurrentTime());
   const [nextCompetitors, setNextCompetitors] = useState<Competitor[]>([]);
   const [countdown, setCountdown] = useState<number | null>(null);
@@ -29,7 +30,13 @@ const StartClockView: React.FC<StartClockViewProps> = ({ startList, onReset }) =
   // Find next competitors
   useEffect(() => {
     const now = currentTime.getTime();
-    const upcoming = startList.allCompetitors.filter(
+
+    // Filter competitors by selected start name if specified
+    const filteredCompetitors = selectedStartName
+      ? startList.allCompetitors.filter((c) => c.startName === selectedStartName)
+      : startList.allCompetitors;
+
+    const upcoming = filteredCompetitors.filter(
       (c) => c.startTime.getTime() > now
     );
 
@@ -46,10 +53,10 @@ const StartClockView: React.FC<StartClockViewProps> = ({ startList, onReset }) =
       setNextCompetitors([]);
       setCountdown(null);
     }
-  }, [currentTime, startList]);
+  }, [currentTime, startList, selectedStartName]);
 
   // Handle start sequence (beeps and speech)
-  const handleStartSequence = useCallback(async (currentCompetitors: Competitor[], allCompetitors: Competitor[]) => {
+  const handleStartSequence = useCallback(async (currentCompetitors: Competitor[], allCompetitors: Competitor[], filterByStartName?: string) => {
     try {
       // Resume audio context
       await audioService.resume();
@@ -64,8 +71,13 @@ const StartClockView: React.FC<StartClockViewProps> = ({ startList, onReset }) =
       if (speechService.isSupported() && currentCompetitors.length > 0) {
         const currentStartTime = currentCompetitors[0].startTime.getTime();
 
+        // Filter by start name if specified
+        const filteredCompetitors = filterByStartName
+          ? allCompetitors.filter((c) => c.startName === filterByStartName)
+          : allCompetitors;
+
         // Etsi seuraavat lähtijät (ne jotka lähtevät nykyisen jälkeen)
-        const nextStarters = allCompetitors.filter(
+        const nextStarters = filteredCompetitors.filter(
           (c) => c.startTime.getTime() > currentStartTime
         );
 
@@ -97,10 +109,10 @@ const StartClockView: React.FC<StartClockViewProps> = ({ startList, onReset }) =
       // Only trigger once per start time
       if (lastStartTime !== startTime) {
         setLastStartTime(startTime);
-        handleStartSequence(nextCompetitors, startList.allCompetitors);
+        handleStartSequence(nextCompetitors, startList.allCompetitors, selectedStartName);
       }
     }
-  }, [countdown, nextCompetitors, lastStartTime, handleStartSequence, startList.allCompetitors]);
+  }, [countdown, nextCompetitors, lastStartTime, handleStartSequence, startList.allCompetitors, selectedStartName]);
 
   const formatTime = (date: Date): string => {
     return date.toLocaleTimeString('fi-FI', {
@@ -153,6 +165,20 @@ const StartClockView: React.FC<StartClockViewProps> = ({ startList, onReset }) =
     }
   };
 
+  const getCompetitorsGridStyle = (count: number): React.CSSProperties => {
+    let columns = 1;
+    if (count > 6) {
+      columns = 3;
+    } else if (count > 3) {
+      columns = 2;
+    }
+
+    return {
+      ...styles.competitorsGrid,
+      gridTemplateColumns: `repeat(${columns}, 1fr)`,
+    };
+  };
+
   return (
     <div style={styles.container}>
       <div style={styles.header}>
@@ -200,34 +226,39 @@ const StartClockView: React.FC<StartClockViewProps> = ({ startList, onReset }) =
       {nextCompetitors.length > 0 ? (
         <>
           <div style={styles.countdownSection}>
-            <div style={styles.countdownLabel}>Aikaa lähtöön</div>
-            <div style={{ ...styles.countdown, color: getCountdownColor() }}>
-              {countdown !== null && countdown >= 0 ? `${countdown}s` : 'LÄHTÖ!'}
+            <div style={styles.startTimeInfo}>
+              <div style={styles.nextStartTime}>
+                Lähtöaika: {formatTime(nextCompetitors[0].startTime)}
+              </div>
+            </div>
+            <div style={styles.countdownInfo}>
+              <div style={styles.countdownLabel}>Aikaa lähtöön</div>
+              <div style={{ ...styles.countdown, color: getCountdownColor() }}>
+                {countdown !== null && countdown >= 0 ? `${countdown}s` : 'LÄHTÖ!'}
+              </div>
             </div>
           </div>
 
           <div style={styles.competitorsSection}>
-            <div style={styles.nextStartTime}>
-              Lähtöaika: {formatTime(nextCompetitors[0].startTime)}
-            </div>
-
-            {nextCompetitors.map((competitor, index) => (
-              <div key={index} style={styles.competitorCard}>
-                <div style={styles.competitorName}>{competitor.personName}</div>
-                <div style={styles.competitorDetails}>
-                  <span style={styles.competitorClass}>{competitor.className}</span>
-                  {competitor.bibNumber && (
-                    <span style={styles.competitorBib}>Kilpailunumero: {competitor.bibNumber}</span>
-                  )}
-                  {competitor.controlCard && (
-                    <span style={styles.competitorControlCard}>Kilpailukortti: {competitor.controlCard}</span>
-                  )}
-                  {competitor.organisation && (
-                    <span style={styles.competitorOrg}>{competitor.organisation}</span>
-                  )}
+            <div style={getCompetitorsGridStyle(nextCompetitors.length)}>
+              {nextCompetitors.map((competitor, index) => (
+                <div key={index} style={styles.competitorCard}>
+                  <div style={styles.competitorName}>{competitor.personName}</div>
+                  <div style={styles.competitorDetails}>
+                    <span style={styles.competitorClass}>{competitor.className}</span>
+                    {competitor.bibNumber && (
+                      <span style={styles.competitorBib}>bib: {competitor.bibNumber}</span>
+                    )}
+                    {competitor.controlCard && (
+                      <span style={styles.competitorControlCard}>CC: {competitor.controlCard}</span>
+                    )}
+                    {competitor.organisation && (
+                      <span style={styles.competitorOrg}>{competitor.organisation}</span>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         </>
       ) : (
@@ -242,185 +273,218 @@ const StartClockView: React.FC<StartClockViewProps> = ({ startList, onReset }) =
 
 const styles: { [key: string]: React.CSSProperties } = {
   container: {
+    display: 'grid',
+    gridTemplateRows: 'auto auto 1fr',
     minHeight: '100vh',
+    maxHeight: '100vh',
     background: 'linear-gradient(135deg, #1e3c72 0%, #2a5298 100%)',
-    padding: '20px',
+    padding: '0.5vh 1vw',
     color: 'white',
+    overflow: 'hidden',
   },
   header: {
-    display: 'flex',
-    justifyContent: 'space-between',
+    display: 'grid',
+    gridTemplateColumns: '1fr auto',
     alignItems: 'flex-start',
-    marginBottom: '40px',
+    marginBottom: '0.5vh',
+    gap: '0.5rem',
   },
   eventName: {
-    fontSize: '36px',
+    fontSize: 'clamp(1.2rem, 2vw, 2rem)',
     fontWeight: 'bold',
-    margin: '0 0 10px 0',
+    margin: '0',
   },
   currentTime: {
-    fontSize: '28px',
+    fontSize: 'clamp(0.9rem, 1.5vw, 1.5rem)',
     opacity: 0.8,
     display: 'flex',
     alignItems: 'center',
-    gap: '10px',
+    gap: '0.5rem',
   },
   simulationBadge: {
     backgroundColor: '#ff9800',
     color: 'white',
-    padding: '4px 12px',
-    borderRadius: '6px',
-    fontSize: '18px',
+    padding: '0.2rem 0.5rem',
+    borderRadius: '4px',
+    fontSize: 'clamp(0.7rem, 1vw, 1rem)',
     fontWeight: 'bold',
   },
   headerButtons: {
     display: 'flex',
     flexDirection: 'column',
-    gap: '10px',
+    gap: '0.3rem',
     alignItems: 'flex-end',
   },
   skipButtons: {
     display: 'flex',
-    gap: '8px',
+    gap: '0.3rem',
   },
   skipButton: {
-    padding: '8px 16px',
-    fontSize: '16px',
+    padding: '0.3rem 0.6rem',
+    fontSize: 'clamp(0.7rem, 0.9vw, 0.9rem)',
     backgroundColor: 'rgba(255,255,255,0.15)',
     color: 'white',
     border: '1px solid rgba(255,255,255,0.4)',
-    borderRadius: '6px',
+    borderRadius: '4px',
     cursor: 'pointer',
     fontWeight: 'bold',
     transition: 'background-color 0.2s',
   },
   resetButton: {
-    padding: '12px 24px',
-    fontSize: '18px',
+    padding: '0.5rem 1rem',
+    fontSize: 'clamp(0.8rem, 1vw, 1rem)',
     backgroundColor: 'rgba(255,255,255,0.2)',
     color: 'white',
     border: '2px solid white',
-    borderRadius: '8px',
+    borderRadius: '6px',
     cursor: 'pointer',
     fontWeight: 'bold',
   },
   countdownSection: {
-    textAlign: 'center',
-    marginBottom: '40px',
+    display: 'grid',
+    gridTemplateColumns: '1fr 1fr',
+    alignItems: 'center',
+    gap: '2vw',
+    marginBottom: '1.5vh',
+    padding: '1vh 2vw',
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderRadius: '8px',
   },
-  countdownLabel: {
-    fontSize: '32px',
-    marginBottom: '20px',
-    opacity: 0.9,
-  },
-  countdown: {
-    fontSize: '120px',
-    fontWeight: 'bold',
-    fontFamily: 'monospace',
-    textShadow: '0 4px 20px rgba(0,0,0,0.3)',
-  },
-  competitorsSection: {
-    maxWidth: '1200px',
-    margin: '0 auto',
+  startTimeInfo: {
+    textAlign: 'left',
   },
   nextStartTime: {
-    fontSize: '48px',
+    fontSize: 'clamp(1.2rem, 2.5vw, 2.5rem)',
     fontWeight: 'bold',
-    textAlign: 'center',
-    marginBottom: '30px',
     textShadow: '0 2px 10px rgba(0,0,0,0.3)',
+  },
+  countdownInfo: {
+    textAlign: 'right',
+  },
+  countdownLabel: {
+    fontSize: 'clamp(0.9rem, 1.5vw, 1.5rem)',
+    opacity: 0.9,
+    marginBottom: '0.5vh',
+  },
+  countdown: {
+    fontSize: 'clamp(2rem, 5vw, 5rem)',
+    fontWeight: 'bold',
+    fontFamily: 'monospace',
+    textShadow: '0 2px 10px rgba(0,0,0,0.3)',
+    lineHeight: '1',
+  },
+  competitorsSection: {
+    display: 'grid',
+    maxWidth: '100%',
+    margin: '0 auto',
+    overflow: 'hidden',
+  },
+  competitorsGrid: {
+    display: 'grid',
+    gap: '1.2vh 1.5vw',
+    alignContent: 'start',
+    overflowY: 'auto',
+    paddingRight: '0.5vw',
+    paddingBottom: '1vh',
   },
   competitorCard: {
     backgroundColor: 'rgba(255,255,255,0.95)',
     color: '#333',
-    padding: '30px',
-    borderRadius: '12px',
-    marginBottom: '20px',
-    boxShadow: '0 4px 20px rgba(0,0,0,0.2)',
+    padding: 'clamp(0.8rem, 1.5vh, 1.5rem) clamp(1rem, 2vw, 2rem)',
+    borderRadius: '10px',
+    boxShadow: '0 3px 15px rgba(0,0,0,0.2)',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.8vh',
   },
   competitorName: {
-    fontSize: '56px',
+    fontSize: 'clamp(1.4rem, 2.8vw, 2.8rem)',
     fontWeight: 'bold',
-    marginBottom: '15px',
     color: '#1e3c72',
+    lineHeight: '1.2',
+    wordBreak: 'break-word',
   },
   competitorDetails: {
     display: 'flex',
-    gap: '30px',
+    gap: 'clamp(0.4rem, 1vw, 1rem)',
     flexWrap: 'wrap',
-    fontSize: '32px',
+    fontSize: 'clamp(0.85rem, 1.4vw, 1.4rem)',
   },
   competitorClass: {
     backgroundColor: '#4caf50',
     color: 'white',
-    padding: '8px 16px',
-    borderRadius: '6px',
+    padding: '0.4rem 0.8rem',
+    borderRadius: '5px',
     fontWeight: 'bold',
+    whiteSpace: 'nowrap',
   },
   competitorBib: {
     backgroundColor: '#ff9800',
     color: 'white',
-    padding: '8px 16px',
-    borderRadius: '6px',
+    padding: '0.4rem 0.8rem',
+    borderRadius: '5px',
     fontWeight: 'bold',
+    whiteSpace: 'nowrap',
   },
   competitorControlCard: {
     backgroundColor: '#9c27b0',
     color: 'white',
-    padding: '8px 16px',
-    borderRadius: '6px',
+    padding: '0.4rem 0.8rem',
+    borderRadius: '5px',
     fontWeight: 'bold',
+    whiteSpace: 'nowrap',
   },
   competitorOrg: {
     backgroundColor: '#2196f3',
     color: 'white',
-    padding: '8px 16px',
-    borderRadius: '6px',
+    padding: '0.4rem 0.8rem',
+    borderRadius: '5px',
     fontWeight: 'bold',
+    whiteSpace: 'nowrap',
   },
   noCompetitors: {
     textAlign: 'center',
-    marginTop: '100px',
+    marginTop: '10vh',
   },
   noCompetitorsIcon: {
-    fontSize: '120px',
-    marginBottom: '20px',
+    fontSize: 'clamp(3rem, 8vw, 6rem)',
+    marginBottom: '1vh',
   },
   noCompetitorsText: {
-    fontSize: '48px',
+    fontSize: 'clamp(1.5rem, 3vw, 3rem)',
     opacity: 0.8,
   },
   audioWarning: {
     display: 'flex',
     justifyContent: 'center',
-    marginBottom: '30px',
+    marginBottom: '0.5vh',
   },
   audioWarningCard: {
     backgroundColor: 'rgba(255, 193, 7, 0.95)',
     color: '#333',
-    padding: '30px 40px',
-    borderRadius: '12px',
-    maxWidth: '800px',
+    padding: 'clamp(0.8rem, 1.5vh, 1.5rem) clamp(1rem, 2vw, 2rem)',
+    borderRadius: '8px',
+    maxWidth: '90vw',
     textAlign: 'center',
     boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
   },
   audioWarningIcon: {
-    fontSize: '64px',
-    marginBottom: '15px',
+    fontSize: 'clamp(1.5rem, 3vw, 3rem)',
+    marginBottom: '0.5vh',
   },
   audioWarningText: {
-    fontSize: '24px',
-    marginBottom: '20px',
-    lineHeight: '1.5',
+    fontSize: 'clamp(0.9rem, 1.3vw, 1.3rem)',
+    marginBottom: '1vh',
+    lineHeight: '1.4',
   },
   enableAudioButton: {
-    padding: '16px 32px',
-    fontSize: '24px',
+    padding: 'clamp(0.6rem, 1vh, 1rem) clamp(1rem, 2vw, 2rem)',
+    fontSize: 'clamp(0.9rem, 1.3vw, 1.3rem)',
     fontWeight: 'bold',
     backgroundColor: '#4caf50',
     color: 'white',
     border: 'none',
-    borderRadius: '8px',
+    borderRadius: '6px',
     cursor: 'pointer',
     boxShadow: '0 2px 10px rgba(0,0,0,0.2)',
     transition: 'transform 0.2s, box-shadow 0.2s',
