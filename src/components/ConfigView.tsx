@@ -4,6 +4,13 @@ import { parseIOF3XML } from '../utils/xmlParser';
 import { saveStartList, loadConfig } from '../utils/storage';
 import { virtualClock } from '../utils/virtualClock';
 
+interface Event {
+  EventID: string;
+  EventTitle: string;
+  Discipline: string;
+  CurrentRace: number;
+}
+
 interface ConfigViewProps {
   onStartListLoaded: (startList: StartList) => void;
   startList?: StartList;
@@ -25,6 +32,11 @@ const ConfigView: React.FC<ConfigViewProps> = ({
   const [simulationEnabled, setSimulationEnabled] = useState(true);
   const [showStartNameDialog, setShowStartNameDialog] = useState(false);
   const [loadedStartList, setLoadedStartList] = useState<StartList | null>(null);
+  const [showEventBrowser, setShowEventBrowser] = useState(false);
+  const [events, setEvents] = useState<Event[]>([]);
+  const [loadingEvents, setLoadingEvents] = useState(false);
+  const [eventsError, setEventsError] = useState<string | null>(null);
+  const [hoveredEventId, setHoveredEventId] = useState<string | null>(null);
 
   // Lataa tallennettu URL kun komponentti mounttaa
   useEffect(() => {
@@ -90,8 +102,86 @@ const ConfigView: React.FC<ConfigViewProps> = ({
     setUrl('https://online.tulospalvelu.fi/tulokset-new/xml/startlist_2025_viking_1_iof.xml');
   };
 
+  const handleBrowseEvents = async () => {
+    setShowEventBrowser(true);
+    setLoadingEvents(true);
+    setEventsError(null);
+
+    try {
+      const currentYear = new Date().getFullYear();
+      const response = await fetch(`https://online.tulospalvelu.fi/tulokset-new/online/online_events_dt.json?Year=${currentYear}`);
+      if (!response.ok) {
+        throw new Error('Tapahtumien haku epäonnistui');
+      }
+
+      const data = await response.json();
+      const eventList: Event[] = data.data.map((event: any) => ({
+        EventID: event.EventID,
+        EventTitle: event.EventTitle,
+        Discipline: event.Discipline,
+        CurrentRace: event.CurrentRace || 1,
+      }));
+
+      setEvents(eventList);
+    } catch (err) {
+      setEventsError(`Virhe ladattaessa tapahtumia: ${err instanceof Error ? err.message : 'Tuntematon virhe'}`);
+    } finally {
+      setLoadingEvents(false);
+    }
+  };
+
+  const handleSelectEvent = (event: Event) => {
+    // Muodosta startlist URL EventID:stä ja race numberista
+    const startlistUrl = `https://online.tulospalvelu.fi/tulokset-new/xml/startlist_${event.EventID}_${event.CurrentRace}_iof.xml`;
+    setUrl(startlistUrl);
+    setShowEventBrowser(false);
+  };
+
+  const handleCloseEventBrowser = () => {
+    setShowEventBrowser(false);
+  };
+
   return (
     <div style={styles.container}>
+      {showEventBrowser && (
+        <div style={styles.dialogOverlay}>
+          <div style={styles.eventBrowserDialog}>
+            <div style={styles.eventBrowserHeader}>
+              <h2 style={styles.dialogTitle}>Selaa tapahtumia {new Date().getFullYear()}</h2>
+              <button onClick={handleCloseEventBrowser} style={styles.closeButton}>
+                ✕
+              </button>
+            </div>
+
+            {loadingEvents ? (
+              <div style={styles.eventBrowserLoading}>Ladataan tapahtumia...</div>
+            ) : eventsError ? (
+              <div style={styles.error}>{eventsError}</div>
+            ) : (
+              <div style={styles.eventsList}>
+                {events.map((event) => (
+                  <div
+                    key={event.EventID}
+                    style={{
+                      ...styles.eventItem,
+                      ...(hoveredEventId === event.EventID ? styles.eventItemHovered : {}),
+                    }}
+                    onClick={() => handleSelectEvent(event)}
+                    onMouseEnter={() => setHoveredEventId(event.EventID)}
+                    onMouseLeave={() => setHoveredEventId(null)}
+                  >
+                    <div style={styles.eventTitle}>{event.EventTitle}</div>
+                    <div style={styles.eventMeta}>
+                      {event.Discipline} • Race {event.CurrentRace} • {event.EventID}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {showStartNameDialog && loadedStartList && (
         <div style={styles.dialogOverlay}>
           <div style={styles.dialogCard}>
@@ -211,6 +301,13 @@ const ConfigView: React.FC<ConfigViewProps> = ({
             style={styles.primaryButton}
           >
             {loading ? 'Ladataan...' : 'Lataa lähtölista'}
+          </button>
+
+          <button
+            onClick={handleBrowseEvents}
+            style={styles.secondaryButton}
+          >
+            📅 Selaa tapahtumia
           </button>
 
           <button
@@ -375,6 +472,60 @@ const styles: { [key: string]: React.CSSProperties } = {
     border: 'none',
     cursor: 'pointer',
     textDecoration: 'underline',
+  },
+  eventBrowserDialog: {
+    backgroundColor: 'white',
+    borderRadius: '12px',
+    padding: '30px',
+    maxWidth: '700px',
+    width: '100%',
+    maxHeight: '80vh',
+    boxShadow: '0 20px 60px rgba(0,0,0,0.4)',
+    display: 'flex',
+    flexDirection: 'column',
+  },
+  eventBrowserHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: '20px',
+  },
+  eventBrowserLoading: {
+    padding: '40px',
+    textAlign: 'center',
+    fontSize: '16px',
+    color: '#666',
+  },
+  eventsList: {
+    maxHeight: '60vh',
+    overflowY: 'auto',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '10px',
+  },
+  eventItem: {
+    padding: '15px 20px',
+    backgroundColor: '#f5f7fa',
+    borderRadius: '8px',
+    cursor: 'pointer',
+    transition: 'all 0.2s',
+    border: '2px solid transparent',
+  },
+  eventItemHovered: {
+    backgroundColor: '#e3f2fd',
+    borderColor: '#667eea',
+    transform: 'translateY(-2px)',
+    boxShadow: '0 4px 12px rgba(102, 126, 234, 0.2)',
+  },
+  eventTitle: {
+    fontSize: '16px',
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: '5px',
+  },
+  eventMeta: {
+    fontSize: '13px',
+    color: '#666',
   },
   section: {
     marginBottom: '20px',

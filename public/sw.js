@@ -1,4 +1,4 @@
-const CACHE_NAME = 'lahtokello-v1';
+const CACHE_NAME = 'lahtokello-v2';
 const urlsToCache = [
   '/',
   '/index.html',
@@ -15,6 +15,13 @@ self.addEventListener('install', (event) => {
 
 // Fetch from cache, fallback to network
 self.addEventListener('fetch', (event) => {
+  // Ohita ulkoiset pyynnöt (esim. API-kutsut tulospalvelu.fi:hin)
+  const url = new URL(event.request.url);
+  if (url.origin !== self.location.origin) {
+    // Anna ulkoisten pyyntöjen mennä suoraan verkkoon
+    return;
+  }
+
   event.respondWith(
     caches.match(event.request).then((response) => {
       return response || fetch(event.request);
