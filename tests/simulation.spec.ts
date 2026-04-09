@@ -37,10 +37,19 @@ test.describe('Simulaatiotila', () => {
     await page.getByRole('button', { name: /lataa lähtölista/i }).click();
 
     // Odota lähtökellonäkymää
-    await expect(page.locator('text=Aikaa lähtöön').or(page.locator('text=Ei tulevia lähtöjä'))).toBeVisible({ timeout: 15000 });
+    // Odota joko lähtöpaikkavalintadialogia tai lähtökellonäkymää
+    await expect(
+      page.getByRole('heading', { name: 'Valitse lähtöpaikka' })
+        .or(page.locator('text=Seuraava lähtö'))
+        .or(page.locator('text=Ei tulevia lähtöjä'))
+    ).toBeVisible({ timeout: 15000 });
+    if (await page.getByRole('heading', { name: 'Valitse lähtöpaikka' }).isVisible()) {
+      await page.getByRole('button', { name: 'Kaikki lähdöt', exact: true }).click();
+    }
+    await expect(page.locator('text=Seuraava lähtö').or(page.locator('text=Ei tulevia lähtöjä'))).toBeVisible({ timeout: 10000 });
 
     // Tarkista että SIMULAATIO-merkintä näkyy
-    await expect(page.locator('text=🎬 SIMULAATIO')).toBeVisible();
+    await expect(page.locator('text=SIMULAATIO')).toBeVisible();
   });
 
   test('simulaatiotilassa näkyy kellon nopeutuspainikkeet', async ({ page }) => {
@@ -53,7 +62,16 @@ test.describe('Simulaatiotila', () => {
     await page.getByRole('button', { name: /lataa lähtölista/i }).click();
 
     // Odota lähtökellonäkymää
-    await expect(page.locator('text=Aikaa lähtöön').or(page.locator('text=Ei tulevia lähtöjä'))).toBeVisible({ timeout: 15000 });
+    // Odota joko lähtöpaikkavalintadialogia tai lähtökellonäkymää
+    await expect(
+      page.getByRole('heading', { name: 'Valitse lähtöpaikka' })
+        .or(page.locator('text=Seuraava lähtö'))
+        .or(page.locator('text=Ei tulevia lähtöjä'))
+    ).toBeVisible({ timeout: 15000 });
+    if (await page.getByRole('heading', { name: 'Valitse lähtöpaikka' }).isVisible()) {
+      await page.getByRole('button', { name: 'Kaikki lähdöt', exact: true }).click();
+    }
+    await expect(page.locator('text=Seuraava lähtö').or(page.locator('text=Ei tulevia lähtöjä'))).toBeVisible({ timeout: 10000 });
 
     // Tarkista että nopeutuspainikkeet näkyvät
     await expect(page.getByRole('button', { name: '+10s' })).toBeVisible();
@@ -71,7 +89,16 @@ test.describe('Simulaatiotila', () => {
     await page.getByRole('button', { name: /lataa lähtölista/i }).click();
 
     // Odota lähtökellonäkymää
-    await expect(page.locator('text=Aikaa lähtöön').or(page.locator('text=Ei tulevia lähtöjä'))).toBeVisible({ timeout: 15000 });
+    // Odota joko lähtöpaikkavalintadialogia tai lähtökellonäkymää
+    await expect(
+      page.getByRole('heading', { name: 'Valitse lähtöpaikka' })
+        .or(page.locator('text=Seuraava lähtö'))
+        .or(page.locator('text=Ei tulevia lähtöjä'))
+    ).toBeVisible({ timeout: 15000 });
+    if (await page.getByRole('heading', { name: 'Valitse lähtöpaikka' }).isVisible()) {
+      await page.getByRole('button', { name: 'Kaikki lähdöt', exact: true }).click();
+    }
+    await expect(page.locator('text=Seuraava lähtö').or(page.locator('text=Ei tulevia lähtöjä'))).toBeVisible({ timeout: 10000 });
 
     // Tarkista että nopeutuspainikkeet ovat näkyvissä ja klikattavissa
     const skip10Button = page.getByRole('button', { name: '+10s' });
@@ -82,7 +109,7 @@ test.describe('Simulaatiotila', () => {
     await skip10Button.click();
 
     // Tarkista että sovellus on edelleen toiminnassa
-    await expect(page.locator('text=🎬 SIMULAATIO')).toBeVisible();
+    await expect(page.locator('text=SIMULAATIO')).toBeVisible();
   });
 
   test('ilman simulaatiotilaa ei näy SIMULAATIO-merkintää eikä nopeutuspainikkeita', async ({ page }) => {
@@ -99,14 +126,63 @@ test.describe('Simulaatiotila', () => {
     await page.getByRole('button', { name: /lataa lähtölista/i }).click();
 
     // Odota lähtökellonäkymää
-    await expect(page.locator('text=Aikaa lähtöön').or(page.locator('text=Ei tulevia lähtöjä'))).toBeVisible({ timeout: 15000 });
+    // Odota joko lähtöpaikkavalintadialogia tai lähtökellonäkymää
+    await expect(
+      page.getByRole('heading', { name: 'Valitse lähtöpaikka' })
+        .or(page.locator('text=Seuraava lähtö'))
+        .or(page.locator('text=Ei tulevia lähtöjä'))
+    ).toBeVisible({ timeout: 15000 });
+    if (await page.getByRole('heading', { name: 'Valitse lähtöpaikka' }).isVisible()) {
+      await page.getByRole('button', { name: 'Kaikki lähdöt', exact: true }).click();
+    }
+    await expect(page.locator('text=Seuraava lähtö').or(page.locator('text=Ei tulevia lähtöjä'))).toBeVisible({ timeout: 10000 });
 
     // Tarkista että SIMULAATIO-merkintä ei näy
-    await expect(page.locator('text=🎬 SIMULAATIO')).not.toBeVisible();
+    await expect(page.locator('text=SIMULAATIO')).not.toBeVisible();
 
     // Tarkista että nopeutuspainikkeet eivät näy
     await expect(page.getByRole('button', { name: '+10s' })).not.toBeVisible();
     await expect(page.getByRole('button', { name: '+30s' })).not.toBeVisible();
     await expect(page.getByRole('button', { name: '+1min' })).not.toBeVisible();
+  });
+
+  test('simulaatiotilan vaihtaminen asetuksista ilman uudelleenlatausta', async ({ page }) => {
+    test.setTimeout(30000);
+
+    await page.goto('/');
+
+    // Lataa esimerkki simulaatiotilassa (oletus: päällä)
+    await page.getByRole('button', { name: /käytä esimerkkiä/i }).click();
+    await page.getByRole('button', { name: /lataa lähtölista/i }).click();
+
+    // Odota joko lähtöpaikkavalintadialogia tai lähtökellonäkymää
+    await expect(
+      page.getByRole('heading', { name: 'Valitse lähtöpaikka' })
+        .or(page.locator('text=Seuraava lähtö'))
+        .or(page.locator('text=Ei tulevia lähtöjä'))
+    ).toBeVisible({ timeout: 15000 });
+    if (await page.getByRole('heading', { name: 'Valitse lähtöpaikka' }).isVisible()) {
+      await page.getByRole('button', { name: 'Kaikki lähdöt', exact: true }).click();
+    }
+    await expect(page.locator('text=Seuraava lähtö').or(page.locator('text=Ei tulevia lähtöjä'))).toBeVisible({ timeout: 10000 });
+
+    // Tarkista että SIMULAATIO-merkintä näkyy
+    await expect(page.locator('text=SIMULAATIO')).toBeVisible();
+
+    // Avaa asetukset
+    await page.getByRole('button', { name: /asetukset/i }).click();
+    await expect(page.locator('h1')).toContainText('Kellokalle');
+
+    // Kytke simulaatio pois päältä
+    const checkbox = page.locator('input[type="checkbox"]');
+    await checkbox.uncheck();
+
+    // Sulje asetukset (klikkaa Sulje-nappia)
+    await page.getByRole('button', { name: /sulje/i }).click();
+
+    // Tarkista että lähtökellonäkymä näytetään ilman simulaatiota
+    await expect(page.locator('text=Seuraava lähtö').or(page.locator('text=Ei tulevia lähtöjä'))).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('text=SIMULAATIO')).not.toBeVisible();
+    await expect(page.getByRole('button', { name: '+10s' })).not.toBeVisible();
   });
 });

@@ -65,7 +65,16 @@ test.describe('Kellokalle sovellus', () => {
 
     // Odota että sivu latautuu (voi kestää hetken)
     // Tarkista että lähtökellonäkymä näytetään
-    await expect(page.locator('text=Aikaa lähtöön').or(page.locator('text=Ei tulevia lähtöjä'))).toBeVisible({ timeout: 15000 });
+    // Odota joko lähtöpaikkavalintadialogia tai lähtökellonäkymää
+    await expect(
+      page.getByRole('heading', { name: 'Valitse lähtöpaikka' })
+        .or(page.locator('text=Seuraava lähtö'))
+        .or(page.locator('text=Ei tulevia lähtöjä'))
+    ).toBeVisible({ timeout: 15000 });
+    if (await page.getByRole('heading', { name: 'Valitse lähtöpaikka' }).isVisible()) {
+      await page.getByRole('button', { name: 'Kaikki lähdöt', exact: true }).click();
+    }
+    await expect(page.locator('text=Seuraava lähtö').or(page.locator('text=Ei tulevia lähtöjä'))).toBeVisible({ timeout: 10000 });
 
     // Tarkista että asetukset-nappi on näkyvissä
     await expect(page.getByRole('button', { name: /asetukset/i })).toBeVisible();
@@ -81,7 +90,16 @@ test.describe('Kellokalle sovellus', () => {
     await page.getByRole('button', { name: /lataa lähtölista/i }).click();
 
     // Odota lähtökellonäkymää
-    await expect(page.locator('text=Aikaa lähtöön').or(page.locator('text=Ei tulevia lähtöjä'))).toBeVisible({ timeout: 15000 });
+    // Odota joko lähtöpaikkavalintadialogia tai lähtökellonäkymää
+    await expect(
+      page.getByRole('heading', { name: 'Valitse lähtöpaikka' })
+        .or(page.locator('text=Seuraava lähtö'))
+        .or(page.locator('text=Ei tulevia lähtöjä'))
+    ).toBeVisible({ timeout: 15000 });
+    if (await page.getByRole('heading', { name: 'Valitse lähtöpaikka' }).isVisible()) {
+      await page.getByRole('button', { name: 'Kaikki lähdöt', exact: true }).click();
+    }
+    await expect(page.locator('text=Seuraava lähtö').or(page.locator('text=Ei tulevia lähtöjä'))).toBeVisible({ timeout: 10000 });
 
     // Klikkaa asetukset-nappia
     const settingsButton = page.getByRole('button', { name: /asetukset/i });
@@ -99,7 +117,16 @@ test.describe('Kellokalle sovellus', () => {
     await page.goto('/');
     await page.getByRole('button', { name: /käytä esimerkkiä/i }).click();
     await page.getByRole('button', { name: /lataa lähtölista/i }).click();
-    await expect(page.locator('text=Aikaa lähtöön').or(page.locator('text=Ei tulevia lähtöjä'))).toBeVisible({ timeout: 15000 });
+    // Odota joko lähtöpaikkavalintadialogia tai lähtökellonäkymää
+    await expect(
+      page.getByRole('heading', { name: 'Valitse lähtöpaikka' })
+        .or(page.locator('text=Seuraava lähtö'))
+        .or(page.locator('text=Ei tulevia lähtöjä'))
+    ).toBeVisible({ timeout: 15000 });
+    if (await page.getByRole('heading', { name: 'Valitse lähtöpaikka' }).isVisible()) {
+      await page.getByRole('button', { name: 'Kaikki lähdöt', exact: true }).click();
+    }
+    await expect(page.locator('text=Seuraava lähtö').or(page.locator('text=Ei tulevia lähtöjä'))).toBeVisible({ timeout: 10000 });
 
     // Avaa uusi sivu samassa kontekstissa (simuloi uudelleenkäynnistys)
     const newPage = await context.newPage();

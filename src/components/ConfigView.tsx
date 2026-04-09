@@ -16,6 +16,10 @@ interface ConfigViewProps {
   startList?: StartList;
   selectedStartName?: string;
   onStartNameChange?: (startName: string) => void;
+  callUpTime?: number;
+  onCallUpTimeChange?: (seconds: number) => void;
+  simulationEnabled?: boolean;
+  onSimulationChange?: (enabled: boolean) => void;
   onClose?: () => void;
 }
 
@@ -24,12 +28,20 @@ const ConfigView: React.FC<ConfigViewProps> = ({
   startList,
   selectedStartName,
   onStartNameChange,
+  callUpTime = 300,
+  onCallUpTimeChange,
+  simulationEnabled: simulationEnabledProp = true,
+  onSimulationChange,
   onClose
 }) => {
   const [url, setUrl] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [simulationEnabled, setSimulationEnabled] = useState(true);
+  const [simulationEnabled, setSimulationEnabledLocal] = useState(simulationEnabledProp);
+  const setSimulationEnabled = (enabled: boolean) => {
+    setSimulationEnabledLocal(enabled);
+    onSimulationChange?.(enabled);
+  };
   const [showStartNameDialog, setShowStartNameDialog] = useState(false);
   const [loadedStartList, setLoadedStartList] = useState<StartList | null>(null);
   const [showEventBrowser, setShowEventBrowser] = useState(false);
@@ -269,6 +281,28 @@ const ConfigView: React.FC<ConfigViewProps> = ({
               ℹ️ Simulaatiotilassa kello alkaa automaattisesti minuutti ennen ensimmäistä lähtöä. Tämä on hyödyllinen testaukseen ja esittelyihin.
             </div>
           )}
+        </div>
+
+        <div style={styles.section}>
+          <label style={styles.label}>
+            Lukuhetki (minuuttia ennen lähtöä):
+          </label>
+          <input
+            type="number"
+            min="1"
+            max="15"
+            value={Math.round(callUpTime / 60)}
+            onChange={(e) => {
+              const minutes = parseInt(e.target.value, 10);
+              if (!isNaN(minutes) && minutes >= 1 && minutes <= 15) {
+                onCallUpTimeChange?.(minutes * 60);
+              }
+            }}
+            style={styles.input}
+          />
+          <div style={styles.infoBox}>
+            ℹ️ Kilpailijoiden nimet luetaan tämän verran ennen lähtöaikaa. Esim. 5 min: "11:05 lähtijät valmistautukaa: Matti Meikäläinen, ..."
+          </div>
         </div>
 
         {startList && startList.startNames.length > 1 && (

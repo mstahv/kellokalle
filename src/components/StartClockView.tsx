@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import type { StartList, Competitor } from '../types';
 import { audioService } from '../utils/audioService';
 import { speechService } from '../utils/speechService';
@@ -8,111 +8,134 @@ interface StartClockViewProps {
   startList: StartList;
   onReset: () => void;
   selectedStartName?: string;
+  callUpTime?: number; // seconds, default 300
 }
 
-const StartClockView: React.FC<StartClockViewProps> = ({ startList, onReset, selectedStartName }) => {
+const StartClockView: React.FC<StartClockViewProps> = ({ startList, onReset, selectedStartName, callUpTime = 300 }) => {
   const [currentTime, setCurrentTime] = useState(virtualClock.getCurrentTime());
-  const [nextCompetitors, setNextCompetitors] = useState<Competitor[]>([]);
-  const [countdown, setCountdown] = useState<number | null>(null);
   const [lastStartTime, setLastStartTime] = useState<number | null>(null);
+  const [lastCallUpTime, setLastCallUpTime] = useState<number | null>(null);
   const [isSimulation] = useState(virtualClock.isEnabled());
   const [audioEnabled, setAudioEnabled] = useState(false);
+  const [beepsEnabled, setBeepsEnabled] = useState(true);
+  const [callUpSpeechEnabled, setCallUpSpeechEnabled] = useState(true);
 
   // Update current time every 100ms for smooth countdown
   useEffect(() => {
     const interval = setInterval(() => {
       setCurrentTime(virtualClock.getCurrentTime());
     }, 100);
-
     return () => clearInterval(interval);
   }, []);
 
-  // Find next competitors
-  useEffect(() => {
-    const now = currentTime.getTime();
-
-    // Filter competitors by selected start name if specified
-    const filteredCompetitors = selectedStartName
+  // Filter competitors by selected start name
+  const filteredCompetitors = useMemo(() => {
+    return selectedStartName
       ? startList.allCompetitors.filter((c) => c.startName === selectedStartName)
       : startList.allCompetitors;
+  }, [startList, selectedStartName]);
 
-    const upcoming = filteredCompetitors.filter(
-      (c) => c.startTime.getTime() > now
-    );
+  // Find next competitors to start (for countdown and beeps)
+  const now = currentTime.getTime();
+  const upcoming = useMemo(() => {
+    return filteredCompetitors.filter((c) => c.startTime.getTime() > now);
+  }, [filteredCompetitors, now]);
 
-    if (upcoming.length > 0) {
-      const nextStartTime = upcoming[0].startTime.getTime();
-      const competitorsAtSameTime = upcoming.filter(
-        (c) => c.startTime.getTime() === nextStartTime
-      );
-      setNextCompetitors(competitorsAtSameTime);
+  const nextCompetitors = useMemo(() => {
+    if (upcoming.length === 0) return [];
+    const nextStartTime = upcoming[0].startTime.getTime();
+    return upcoming.filter((c) => c.startTime.getTime() === nextStartTime);
+  }, [upcoming]);
 
-      const timeToStart = Math.floor((nextStartTime - now) / 1000);
-      setCountdown(timeToStart);
-    } else {
-      setNextCompetitors([]);
-      setCountdown(null);
-    }
-  }, [currentTime, startList, selectedStartName]);
+  const countdown = useMemo(() => {
+    if (nextCompetitors.length === 0) return null;
+    return Math.floor((nextCompetitors[0].startTime.getTime() - now) / 1000);
+  }, [nextCompetitors, now]);
 
-  // Handle start sequence (beeps and speech)
-  const handleStartSequence = useCallback(async (currentCompetitors: Competitor[], allCompetitors: Competitor[], filterByStartName?: string) => {
+  // Find the group currently in the call-up window (lukuhetki)
+  // These are competitors whose lukuhetki has passed but haven't started yet
+  const callUpGroup = useMemo(() => {
+    const callUpMs = callUpTime * 1000;
+
+    // Find competitors in the call-up window: lukuhetki passed, but not yet started
+    const inWindow = filteredCompetitors.filter((c) => {
+      const startMs = c.startTime.getTime();
+      return startMs > now && (startMs - now) <= callUpMs;
+    });
+
+    if (inWindow.length === 0) return [];
+
+    // Get the most recently called group (largest startTime whose lukuhetki has passed)
+    const uniqueStartTimes = [...new Set(inWindow.map((c) => c.startTime.getTime()))].sort((a, b) => b - a);
+    const latestStartTime = uniqueStartTimes[0];
+    return inWindow.filter((c) => c.startTime.getTime() === latestStartTime);
+  }, [filteredCompetitors, now, callUpTime]);
+
+  // Only show competitors once their lukuhetki has arrived
+  const displayCompetitors = callUpGroup;
+
+  // Handle beep sequence (only beeps, no speech)
+  const handleBeepSequence = useCallback(async () => {
     try {
-      // Resume audio context
       await audioService.resume();
-
-      // Play beep sequence
       await audioService.playStartSequence();
-
-      // Wait 5 seconds
-      await new Promise((resolve) => setTimeout(resolve, 5000));
-
-      // Find NEXT start after current one
-      if (speechService.isSupported() && currentCompetitors.length > 0) {
-        const currentStartTime = currentCompetitors[0].startTime.getTime();
-
-        // Filter by start name if specified
-        const filteredCompetitors = filterByStartName
-          ? allCompetitors.filter((c) => c.startName === filterByStartName)
-          : allCompetitors;
-
-        // Etsi seuraavat lähtijät (ne jotka lähtevät nykyisen jälkeen)
-        const nextStarters = filteredCompetitors.filter(
-          (c) => c.startTime.getTime() > currentStartTime
-        );
-
-        if (nextStarters.length > 0) {
-          const nextStartTime = nextStarters[0].startTime.getTime();
-          const nextCompetitorsToAnnounce = nextStarters.filter(
-            (c) => c.startTime.getTime() === nextStartTime
-          );
-
-          const names = nextCompetitorsToAnnounce.map((c) => c.personName).join(', ');
-          const announcement = `Seuraavat lähtijät: ${names}`;
-          try {
-            await speechService.speak(announcement);
-          } catch (error) {
-            console.error('Speech error:', error);
-          }
-        }
-      }
     } catch (error) {
-      console.error('Start sequence error:', error);
+      console.error('Beep sequence error:', error);
     }
   }, []);
 
-  // Trigger start sequence when countdown reaches 5 seconds
-  useEffect(() => {
-    if (countdown === 5 && nextCompetitors.length > 0) {
-      const startTime = nextCompetitors[0].startTime.getTime();
+  // Handle call-up announcement (lukuhetki speech)
+  const handleCallUpAnnouncement = useCallback(async (competitors: Competitor[]) => {
+    if (!speechService.isSupported() || competitors.length === 0) return;
+    try {
+      await audioService.resume();
+      const startDate = competitors[0].startTime;
+      const timeStr = startDate.toLocaleTimeString('fi-FI', { hour: '2-digit', minute: '2-digit' });
+      const names = competitors.map((c) => c.personName).join(', ');
+      const announcement = `${timeStr} lähtijät valmistautukaa: ${names}`;
+      await speechService.speak(announcement);
+    } catch (error) {
+      console.error('Call-up speech error:', error);
+    }
+  }, []);
 
-      // Only trigger once per start time
+  // Trigger beep sequence at 5 seconds before start
+  // Use <= 5 instead of === 5 to avoid missing the trigger when time jumps (e.g. +10s skip)
+  useEffect(() => {
+    if (beepsEnabled && countdown !== null && countdown <= 5 && countdown >= 0 && nextCompetitors.length > 0) {
+      const startTime = nextCompetitors[0].startTime.getTime();
       if (lastStartTime !== startTime) {
         setLastStartTime(startTime);
-        handleStartSequence(nextCompetitors, startList.allCompetitors, selectedStartName);
+        handleBeepSequence();
       }
     }
-  }, [countdown, nextCompetitors, lastStartTime, handleStartSequence, startList.allCompetitors, selectedStartName]);
+  }, [beepsEnabled, countdown, nextCompetitors, lastStartTime, handleBeepSequence]);
+
+  // Trigger call-up announcement at lukuhetki
+  useEffect(() => {
+    if (!callUpSpeechEnabled) return;
+    const callUpMs = callUpTime * 1000;
+
+    // Check all upcoming unique start times for lukuhetki triggers
+    const uniqueStartTimes = [...new Set(
+      filteredCompetitors
+        .filter((c) => c.startTime.getTime() > now)
+        .map((c) => c.startTime.getTime())
+    )].sort((a, b) => a - b);
+
+    for (const st of uniqueStartTimes) {
+      const lukuhetki = st - callUpMs;
+      const timeSinceLukuhetki = now - lukuhetki;
+
+      // Trigger within a 1.5 second window, once per start time
+      if (timeSinceLukuhetki >= 0 && timeSinceLukuhetki < 1500 && lastCallUpTime !== st) {
+        setLastCallUpTime(st);
+        const competitorsToCall = filteredCompetitors.filter((c) => c.startTime.getTime() === st);
+        handleCallUpAnnouncement(competitorsToCall);
+        break;
+      }
+    }
+  }, [callUpSpeechEnabled, now, filteredCompetitors, callUpTime, lastCallUpTime, handleCallUpAnnouncement]);
 
   const formatTime = (date: Date): string => {
     return date.toLocaleTimeString('fi-FI', {
@@ -120,6 +143,25 @@ const StartClockView: React.FC<StartClockViewProps> = ({ startList, onReset, sel
       minute: '2-digit',
       second: '2-digit',
     });
+  };
+
+  const formatTimeShort = (date: Date): string => {
+    return date.toLocaleTimeString('fi-FI', {
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
+
+  const formatCountdown = (seconds: number): string => {
+    if (seconds < 0) return 'LÄHTÖ!';
+    const d = Math.floor(seconds / 86400);
+    const h = Math.floor((seconds % 86400) / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = seconds % 60;
+    if (d > 0) return `${d}d ${h}h ${m}m`;
+    if (h > 0) return `${h}h ${m}m ${s}s`;
+    if (m > 0) return `${m}m ${s}s`;
+    return `${s}s`;
   };
 
   const getCountdownColor = (): string => {
@@ -136,10 +178,8 @@ const StartClockView: React.FC<StartClockViewProps> = ({ startList, onReset, sel
 
   const handleEnableAudio = async () => {
     try {
-      // Resume audio context ja testaa ääntä
       await audioService.resume();
 
-      // Testaa että ääni toimii soittamalla lyhyt piippi
       const context = (audioService as any).audioContext;
       if (context) {
         const oscillator = context.createOscillator();
@@ -152,7 +192,6 @@ const StartClockView: React.FC<StartClockViewProps> = ({ startList, onReset, sel
         oscillator.stop(context.currentTime + 0.05);
       }
 
-      // Testaa että puhe toimii (hiljaa)
       if (speechService.isSupported()) {
         const utterance = new SpeechSynthesisUtterance(' ');
         utterance.volume = 0.01;
@@ -167,9 +206,9 @@ const StartClockView: React.FC<StartClockViewProps> = ({ startList, onReset, sel
 
   const getCompetitorsGridStyle = (count: number): React.CSSProperties => {
     let columns = 1;
-    if (count > 6) {
+    if (count > 4) {
       columns = 3;
-    } else if (count > 3) {
+    } else if (count > 2) {
       columns = 2;
     }
 
@@ -186,12 +225,15 @@ const StartClockView: React.FC<StartClockViewProps> = ({ startList, onReset, sel
           <h1 style={styles.eventName}>{startList.eventName}</h1>
           <div style={styles.currentTime}>
             {formatTime(currentTime)}
-            {isSimulation && <span style={styles.simulationBadge}> 🎬 SIMULAATIO</span>}
+            {isSimulation && <span style={styles.simulationBadge}> SIMULAATIO</span>}
           </div>
         </div>
         <div style={styles.headerButtons}>
           {isSimulation && (
             <div style={styles.skipButtons}>
+              <button onClick={() => handleSkipForward(-300)} style={styles.skipButton}>
+                -5min
+              </button>
               <button onClick={() => handleSkipForward(10)} style={styles.skipButton}>
                 +10s
               </button>
@@ -203,8 +245,22 @@ const StartClockView: React.FC<StartClockViewProps> = ({ startList, onReset, sel
               </button>
             </div>
           )}
+          <div style={styles.toggleButtons}>
+            <button
+              onClick={() => setBeepsEnabled((v) => !v)}
+              style={beepsEnabled ? styles.toggleButtonActive : styles.toggleButtonInactive}
+            >
+              Piipit {beepsEnabled ? 'ON' : 'OFF'}
+            </button>
+            <button
+              onClick={() => setCallUpSpeechEnabled((v) => !v)}
+              style={callUpSpeechEnabled ? styles.toggleButtonActive : styles.toggleButtonInactive}
+            >
+              Kutsunta {callUpSpeechEnabled ? 'ON' : 'OFF'}
+            </button>
+          </div>
           <button onClick={onReset} style={styles.resetButton}>
-            ⚙️ Asetukset
+            Asetukset
           </button>
         </div>
       </div>
@@ -227,39 +283,45 @@ const StartClockView: React.FC<StartClockViewProps> = ({ startList, onReset, sel
         <>
           <div style={styles.countdownSection}>
             <div style={styles.startTimeInfo}>
+              <div style={styles.nextStartLabel}>Seuraava lähtö:</div>
               <div style={styles.nextStartTime}>
-                Lähtöaika: {formatTime(nextCompetitors[0].startTime)}
+                {formatTimeShort(nextCompetitors[0].startTime)}
               </div>
             </div>
             <div style={styles.countdownInfo}>
               <div style={styles.countdownLabel}>Aikaa lähtöön</div>
               <div style={{ ...styles.countdown, color: getCountdownColor() }}>
-                {countdown !== null && countdown >= 0 ? `${countdown}s` : 'LÄHTÖ!'}
+                {countdown !== null ? formatCountdown(countdown) : 'LÄHTÖ!'}
               </div>
             </div>
           </div>
 
-          <div style={styles.competitorsSection}>
-            <div style={getCompetitorsGridStyle(nextCompetitors.length)}>
-              {nextCompetitors.map((competitor, index) => (
-                <div key={index} style={styles.competitorCard}>
-                  <div style={styles.competitorName}>{competitor.personName}</div>
-                  <div style={styles.competitorDetails}>
-                    <span style={styles.competitorClass}>{competitor.className}</span>
-                    {competitor.bibNumber && (
-                      <span style={styles.competitorBib}>bib: {competitor.bibNumber}</span>
-                    )}
-                    {competitor.controlCard && (
-                      <span style={styles.competitorControlCard}>CC: {competitor.controlCard}</span>
-                    )}
-                    {competitor.organisation && (
-                      <span style={styles.competitorOrg}>{competitor.organisation}</span>
-                    )}
+          {displayCompetitors.length > 0 && (
+            <div style={styles.competitorsSection}>
+              <div style={styles.callUpLabel}>
+                {formatTimeShort(displayCompetitors[0].startTime)} lähtijät {Math.round(callUpTime / 60)}' viivalle:
+              </div>
+              <div style={getCompetitorsGridStyle(displayCompetitors.length)}>
+                {displayCompetitors.map((competitor, index) => (
+                  <div key={index} style={styles.competitorCard}>
+                    <div style={styles.competitorName}>{competitor.personName}</div>
+                    <div style={styles.competitorDetails}>
+                      <span style={styles.competitorClass}>{competitor.className}</span>
+                      {competitor.bibNumber && (
+                        <span style={styles.competitorBib}>bib: {competitor.bibNumber}</span>
+                      )}
+                      {competitor.controlCard && (
+                        <span style={styles.competitorControlCard}>CC: {competitor.controlCard}</span>
+                      )}
+                      {competitor.organisation && (
+                        <span style={styles.competitorOrg}>{competitor.organisation}</span>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
-          </div>
+          )}
         </>
       ) : (
         <div style={styles.noCompetitors}>
@@ -330,6 +392,30 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontWeight: 'bold',
     transition: 'background-color 0.2s',
   },
+  toggleButtons: {
+    display: 'flex',
+    gap: '0.3rem',
+  },
+  toggleButtonActive: {
+    padding: '0.3rem 0.6rem',
+    fontSize: 'clamp(0.7rem, 0.9vw, 0.9rem)',
+    backgroundColor: 'rgba(76, 175, 80, 0.8)',
+    color: 'white',
+    border: '1px solid rgba(255,255,255,0.4)',
+    borderRadius: '4px',
+    cursor: 'pointer',
+    fontWeight: 'bold',
+  },
+  toggleButtonInactive: {
+    padding: '0.3rem 0.6rem',
+    fontSize: 'clamp(0.7rem, 0.9vw, 0.9rem)',
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    color: 'rgba(255,255,255,0.5)',
+    border: '1px solid rgba(255,255,255,0.2)',
+    borderRadius: '4px',
+    cursor: 'pointer',
+    fontWeight: 'bold',
+  },
   resetButton: {
     padding: '0.5rem 1rem',
     fontSize: 'clamp(0.8rem, 1vw, 1rem)',
@@ -345,18 +431,31 @@ const styles: { [key: string]: React.CSSProperties } = {
     gridTemplateColumns: '1fr 1fr',
     alignItems: 'center',
     gap: '2vw',
-    marginBottom: '1.5vh',
-    padding: '1vh 2vw',
+    marginBottom: '0.5vh',
+    padding: '0.5vh 2vw',
     backgroundColor: 'rgba(255,255,255,0.1)',
     borderRadius: '8px',
   },
   startTimeInfo: {
     textAlign: 'left',
   },
+  nextStartLabel: {
+    fontSize: 'clamp(0.9rem, 1.8vw, 1.6rem)',
+    fontWeight: '400',
+    opacity: 0.8,
+  },
+  callUpLabel: {
+    fontSize: 'clamp(1.4rem, 3.5vw, 3rem)',
+    padding: '0.3vh 1vw',
+    color: '#ffeb3b',
+    fontWeight: 'bold',
+    textShadow: '0 1px 4px rgba(0,0,0,0.3)',
+  },
   nextStartTime: {
-    fontSize: 'clamp(1.2rem, 2.5vw, 2.5rem)',
+    fontSize: 'clamp(2.2rem, 5.5vw, 5rem)',
     fontWeight: 'bold',
     textShadow: '0 2px 10px rgba(0,0,0,0.3)',
+    lineHeight: '1.1',
   },
   countdownInfo: {
     textAlign: 'right',
@@ -364,7 +463,7 @@ const styles: { [key: string]: React.CSSProperties } = {
   countdownLabel: {
     fontSize: 'clamp(0.9rem, 1.5vw, 1.5rem)',
     opacity: 0.9,
-    marginBottom: '0.5vh',
+    marginBottom: '0.3vh',
   },
   countdown: {
     fontSize: 'clamp(2rem, 5vw, 5rem)',
@@ -374,71 +473,72 @@ const styles: { [key: string]: React.CSSProperties } = {
     lineHeight: '1',
   },
   competitorsSection: {
-    display: 'grid',
+    display: 'flex',
+    flexDirection: 'column',
+    justifyContent: 'flex-end',
     maxWidth: '100%',
-    margin: '0 auto',
     overflow: 'hidden',
   },
   competitorsGrid: {
     display: 'grid',
-    gap: '1.2vh 1.5vw',
+    gap: '0.8vh 1vw',
     alignContent: 'start',
     overflowY: 'auto',
     paddingRight: '0.5vw',
-    paddingBottom: '1vh',
+    paddingBottom: '0.5vh',
   },
   competitorCard: {
     backgroundColor: 'rgba(255,255,255,0.95)',
     color: '#333',
-    padding: 'clamp(0.8rem, 1.5vh, 1.5rem) clamp(1rem, 2vw, 2rem)',
-    borderRadius: '10px',
-    boxShadow: '0 3px 15px rgba(0,0,0,0.2)',
+    padding: 'clamp(0.4rem, 0.8vh, 0.8rem) clamp(0.6rem, 1.2vw, 1.2rem)',
+    borderRadius: '8px',
+    boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
     display: 'flex',
     flexDirection: 'column',
-    gap: '0.8vh',
+    gap: '0.3vh',
   },
   competitorName: {
-    fontSize: 'clamp(1.4rem, 2.8vw, 2.8rem)',
+    fontSize: 'clamp(1.3rem, 2.6vw, 2.6rem)',
     fontWeight: 'bold',
     color: '#1e3c72',
-    lineHeight: '1.2',
+    lineHeight: '1.15',
     wordBreak: 'break-word',
   },
   competitorDetails: {
     display: 'flex',
-    gap: 'clamp(0.4rem, 1vw, 1rem)',
+    gap: 'clamp(0.2rem, 0.5vw, 0.6rem)',
     flexWrap: 'wrap',
-    fontSize: 'clamp(0.85rem, 1.4vw, 1.4rem)',
+    fontSize: 'clamp(0.8rem, 1.3vw, 1.3rem)',
   },
   competitorClass: {
     backgroundColor: '#4caf50',
     color: 'white',
-    padding: '0.4rem 0.8rem',
-    borderRadius: '5px',
+    padding: '0.15rem 0.5rem',
+    borderRadius: '4px',
     fontWeight: 'bold',
     whiteSpace: 'nowrap',
   },
   competitorBib: {
     backgroundColor: '#ff9800',
     color: 'white',
-    padding: '0.4rem 0.8rem',
-    borderRadius: '5px',
+    padding: '0.15rem 0.5rem',
+    borderRadius: '4px',
     fontWeight: 'bold',
     whiteSpace: 'nowrap',
   },
   competitorControlCard: {
     backgroundColor: '#9c27b0',
     color: 'white',
-    padding: '0.4rem 0.8rem',
-    borderRadius: '5px',
+    padding: '0.15rem 0.5rem',
+    borderRadius: '4px',
     fontWeight: 'bold',
     whiteSpace: 'nowrap',
   },
   competitorOrg: {
     backgroundColor: '#2196f3',
     color: 'white',
-    padding: '0.4rem 0.8rem',
-    borderRadius: '5px',
+    padding: '0.15rem 0.5rem',
+    borderRadius: '4px',
     fontWeight: 'bold',
     whiteSpace: 'nowrap',
   },

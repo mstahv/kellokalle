@@ -33,4 +33,6 @@ export interface AppConfig {
   cachedStartList?: StartList;
   lastUpdated?: number;
   selectedStartName?: string; // Valittu lähtöpaikka
+  callUpTime?: number; // Lukuhetki sekunteina ennen lähtöä (oletus 300 = 5 min)
+  simulationEnabled?: boolean;
 }

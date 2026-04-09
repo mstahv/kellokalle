@@ -8,6 +8,8 @@ import { virtualClock } from './utils/virtualClock';
 function App() {
   const [startList, setStartList] = useState<StartList | null>(null);
   const [selectedStartName, setSelectedStartName] = useState<string>('');
+  const [callUpTime, setCallUpTime] = useState<number>(300);
+  const [simulationEnabled, setSimulationEnabled] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
   const [showConfig, setShowConfig] = useState(false);
 
@@ -20,6 +22,12 @@ function App() {
     if (config?.selectedStartName) {
       setSelectedStartName(config.selectedStartName);
     }
+    if (config?.callUpTime !== undefined) {
+      setCallUpTime(config.callUpTime);
+    }
+    if (config?.simulationEnabled !== undefined) {
+      setSimulationEnabled(config.simulationEnabled);
+    }
     setIsLoading(false);
   }, []);
 
@@ -30,7 +38,6 @@ function App() {
 
   const handleStartNameChange = (startName: string) => {
     setSelectedStartName(startName);
-    // Save to config
     const config = loadConfig();
     saveConfig({
       ...config,
@@ -38,16 +45,38 @@ function App() {
     });
   };
 
+  const handleCallUpTimeChange = (seconds: number) => {
+    setCallUpTime(seconds);
+    const config = loadConfig();
+    saveConfig({
+      ...config,
+      callUpTime: seconds,
+    });
+  };
+
   const handleReset = () => {
     setShowConfig(true);
+  };
+
+  const handleSimulationChange = (enabled: boolean) => {
+    setSimulationEnabled(enabled);
+    const config = loadConfig();
+    saveConfig({
+      ...config,
+      simulationEnabled: enabled,
+    });
   };
 
   const handleCloseConfig = () => {
     setShowConfig(false);
 
-    // Resetoi simulaatio jos se on päällä
-    if (virtualClock.isEnabled() && startList) {
-      virtualClock.activateForStartList(startList);
+    // Aseta simulaatiotila checkboxin mukaan
+    if (startList) {
+      if (simulationEnabled) {
+        virtualClock.activateForStartList(startList);
+      } else {
+        virtualClock.disable();
+      }
     }
   };
 
@@ -66,6 +95,7 @@ function App() {
           startList={startList}
           onReset={handleReset}
           selectedStartName={selectedStartName}
+          callUpTime={callUpTime}
         />
       ) : (
         <ConfigView
@@ -73,6 +103,10 @@ function App() {
           startList={startList || undefined}
           selectedStartName={selectedStartName}
           onStartNameChange={handleStartNameChange}
+          callUpTime={callUpTime}
+          onCallUpTimeChange={handleCallUpTimeChange}
+          simulationEnabled={simulationEnabled}
+          onSimulationChange={handleSimulationChange}
           onClose={startList ? handleCloseConfig : undefined}
         />
       )}
